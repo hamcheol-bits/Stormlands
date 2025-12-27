@@ -12,30 +12,28 @@ cryptography>=42.0.0
 # HTTP Client
 httpx>=0.26.0
 
-# LLM & RAG
+# LLM & AI Models
+ollama>=0.1.0  # Llama3 로컬 실행
+transformers>=4.36.0  # FinGPT, FinBERT
+torch>=2.1.0  # PyTorch
+accelerate>=0.25.0  # 모델 로딩 최적화
+peft>=0.7.0  # LoRA 어댑터 (FinGPT)
+
+# Vector Database & Embeddings
+chromadb>=0.4.22
+sentence-transformers>=2.2.2
 langchain>=0.1.0
 langchain-community>=0.0.13
-ollama>=0.1.0  # Llama3 로컬 실행
-# transformers>=4.36.0  # 대안: Hugging Face Transformers
-# torch>=2.1.0  # Llama3 직접 로드 시
-
-# Vector Database
-chromadb>=0.4.22
-sentence-transformers>=2.2.2  # 임베딩 모델
 
 # Data Processing
 pandas>=2.2.0
 numpy>=1.26.3
+scikit-learn>=1.4.0
 
 # Utils
 python-dotenv>=1.0.0
 python-dateutil>=2.8.2
-
-# Logging
 python-json-logger>=2.0.7
-
-# Task Scheduling
-apscheduler>=3.10.4
 
 # Development & Testing
 pytest>=7.4.4

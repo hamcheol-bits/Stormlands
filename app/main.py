@@ -10,6 +10,7 @@ from app.config.config import get_settings
 from app.core.database import check_db_connection, get_db_stats
 from app.core.chroma_client import check_chroma_connection, get_chroma_client
 from app.core.llm_client import check_llm_connection, get_llm_client
+from app.core.ai_models import get_ai_engine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +25,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """애플리케이션 시작/종료 시 실행"""
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
+    logger.info("="*60)
 
     # 1. MySQL 연결 확인
     if check_db_connection():
@@ -60,6 +62,30 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"✗ LLM connection failed: {e}")
 
+    # 4. AI 모델 초기화
+    logger.info("")
+    logger.info("Initializing AI models...")
+    try:
+        ai_engine = get_ai_engine()
+        await ai_engine.initialize()
+        logger.info("✓ All AI models initialized")
+
+        if ai_engine.llama3:
+            logger.info("  - Llama3: Ready (범용 추론)")
+        if ai_engine.fingpt:
+            logger.info("  - FinGPT: Ready (금융 특화)")
+        if ai_engine.finbert:
+            logger.info("  - FinBERT: Ready (감성 분석)")
+
+    except Exception as e:
+        logger.warning(f"AI models initialization failed: {e}")
+        logger.warning("Some features may not be available")
+
+    logger.info("="*60)
+    logger.info(f"{settings.PROJECT_NAME} is ready!")
+    logger.info(f"API running on http://{settings.API_HOST}:{settings.API_PORT}")
+    logger.info("="*60)
+
     yield
 
     logger.info("Shutting down Stormlands")
@@ -80,7 +106,13 @@ async def root():
         "project": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "description": settings.DESCRIPTION,
-        "status": "running"
+        "status": "running",
+        "features": [
+            "자연어 종목 추천",
+            "AI 기반 재무 분석",
+            "투자의견 감성 분석",
+            "종목 비교 분석"
+        ]
     }
 
 
@@ -112,6 +144,19 @@ async def health_check():
     except:
         pass
 
+    # AI 모델 상태
+    ai_status = {}
+    try:
+        ai_engine = get_ai_engine()
+        ai_status = {
+            "llama3": ai_engine.llama3 is not None,
+            "fingpt": ai_engine.fingpt is not None,
+            "finbert": ai_engine.finbert is not None,
+            "initialized": ai_engine._initialized
+        }
+    except:
+        pass
+
     return {
         "status": "ok",
         "services": {
@@ -119,6 +164,7 @@ async def health_check():
             "chromadb": chroma_status,
             "llm": llm_status
         },
+        "ai_models": ai_status,
         "data": {
             "mysql": db_stats,
             "chromadb": chroma_stats
@@ -128,12 +174,14 @@ async def health_check():
 
 
 # ============================================================
-# 라우터 등록 (향후 추가)
+# 라우터 등록
 # ============================================================
-# from app.routers import analysis, recommendations, portfolio
-# app.include_router(analysis.router)
-# app.include_router(recommendations.router)
-# app.include_router(portfolio.router)
+from app.routers import recommendations, opinions
+
+app.include_router(recommendations.router)
+app.include_router(opinions.router)
+
+logger.info("All routers registered successfully")
 
 
 if __name__ == "__main__":

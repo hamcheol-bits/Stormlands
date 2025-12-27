@@ -29,15 +29,29 @@ class Settings(BaseSettings):
     CHROMA_COLLECTION_NAME: str = "financial_statements"
 
     # ============================================================
-    # LLM 설정 (Llama3)
+    # AI 모델 설정
     # ============================================================
-    # Ollama
+
+    # 1. Llama3 (범용 추론) - Ollama
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3"
 
-    # Hugging Face (대안)
-    HF_MODEL_NAME: str = "meta-llama/Llama-3-8B-Instruct"
+    # 2. FinGPT (금융 특화) - Hugging Face
+    FINGPT_MODEL: str = "FinGPT/fingpt-forecaster_dow30_llama2-7b_lora"
+    FINGPT_ENABLED: bool = True  # 비활성화하면 Llama3만 사용
+
+    # 3. FinBERT (감성 분석) - Hugging Face
+    FINBERT_MODEL: str = "ProsusAI/finbert"
+    FINBERT_ENABLED: bool = True
+
+    # 4. Hugging Face Token (선택)
     HF_TOKEN: str = ""
+
+    # 모델 캐시 디렉토리
+    MODEL_CACHE_DIR: str = "./models"
+
+    # GPU 사용 여부
+    USE_GPU: bool = True
 
     # ============================================================
     # 임베딩 모델 설정
@@ -46,23 +60,40 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 384
 
     # ============================================================
-    # 분석 설정
+    # 분석 설정 (기본값 - AI가 자체 판단할 때 참고)
     # ============================================================
-    # 밸류에이션 기준
-    DEFAULT_MAX_PBR: float = 1.0
-    DEFAULT_MIN_ROE: float = 10.0
-    DEFAULT_MAX_DEBT_RATIO: float = 150.0
-    DEFAULT_MIN_PER: float = 5.0
-    DEFAULT_MAX_PER: float = 15.0
 
-    # 성장주 기준
-    MIN_SALES_GROWTH: float = 20.0
-    MIN_PROFIT_GROWTH: float = 15.0
-    MIN_ASSET_GROWTH: float = 10.0
+    # 밸류에이션 참고 기준
+    REFERENCE_MAX_PBR: float = 1.0
+    REFERENCE_MIN_ROE: float = 10.0
+    REFERENCE_MAX_DEBT_RATIO: float = 150.0
+    REFERENCE_MIN_PER: float = 5.0
+    REFERENCE_MAX_PER: float = 15.0
 
-    # 배당주 기준
-    MIN_DIVIDEND_YIELD: float = 3.0
-    MIN_CONSECUTIVE_YEARS: int = 3
+    # 성장주 참고 기준
+    REFERENCE_MIN_SALES_GROWTH: float = 20.0
+    REFERENCE_MIN_PROFIT_GROWTH: float = 15.0
+    REFERENCE_MIN_ASSET_GROWTH: float = 10.0
+
+    # 배당주 참고 기준
+    REFERENCE_MIN_DIVIDEND_YIELD: float = 3.0
+    REFERENCE_MIN_CONSECUTIVE_YEARS: int = 3
+
+    # ============================================================
+    # 쿼리 분석 설정
+    # ============================================================
+
+    # 기본 결과 개수
+    DEFAULT_RESULT_COUNT: int = 5
+    MAX_RESULT_COUNT: int = 20
+
+    # AI 응답 설정
+    AI_TEMPERATURE: float = 0.7  # 창의성 (0.0 ~ 1.0)
+    AI_MAX_TOKENS: int = 2000
+
+    # 재무 데이터 기간
+    FINANCIAL_PERIOD: str = "Y"  # Y: 연간, Q: 분기
+    PRICE_HISTORY_DAYS: int = 365
 
     # ============================================================
     # 포트폴리오 최적화
@@ -84,7 +115,7 @@ class Settings(BaseSettings):
     API_PORT: int = 8200
     API_RELOAD: bool = True
 
-    # Riverlands API (선택적)
+    # Riverlands API (데이터 수집용)
     RIVERLANDS_API_URL: str = "http://localhost:8100"
 
     # Timezone
