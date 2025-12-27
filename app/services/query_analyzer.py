@@ -29,10 +29,10 @@ class QueryAnalyzer:
         self.ai_engine = get_ai_engine()
 
     async def analyze_and_recommend(
-            self,
-            db: Session,
-            query: str,
-            max_results: int = 10
+        self,
+        db: Session,
+        query: str,
+        max_results: int = 10
     ) -> Dict[str, Any]:
         """
         자연어 쿼리 분석 및 종목 추천
@@ -185,11 +185,11 @@ class QueryAnalyzer:
         return mapping.get(field.lower())
 
     def _execute_query(
-            self,
-            db: Session,
-            filters: List,
-            order_by: List,
-            limit: int
+        self,
+        db: Session,
+        filters: List,
+        order_by: List,
+        limit: int
     ) -> List[tuple]:
         """
         SQL 실행
@@ -236,10 +236,10 @@ class QueryAnalyzer:
         return results
 
     async def _generate_reasoning(
-            self,
-            stocks_with_financials: List[tuple],
-            analysis: Dict[str, Any],
-            original_query: str
+        self,
+        stocks_with_financials: List[tuple],
+        analysis: Dict[str, Any],
+        original_query: str
     ) -> str:
         """
         AI로 추천 이유 생성
@@ -268,7 +268,7 @@ class QueryAnalyzer:
             except Exception as e:
                 logger.warning(f"FinGPT failed, using Llama3: {e}")
 
-        # 폴백: Llama3
+        # 폴백: Llama3 (한글로 응답)
         prompt = f"""사용자 질문: "{original_query}"
 
 추천 종목 ({len(stocks_data)}개):
@@ -278,12 +278,38 @@ class QueryAnalyzer:
             prompt += f"   섹터: {stock['sector']}\n"
             prompt += f"   ROE: {stock['roe_val']}%, 매출성장률: {stock['grs']}%\n"
             prompt += f"   부채비율: {stock['lblt_rate']}%\n"
+            if stock.get('per'):
+                prompt += f"   PER: {stock['per']}\n"
 
-        prompt += "\n위 종목들을 추천한 이유를 간결하게 설명하세요."
+        prompt += """
+
+⚠️ 중요: 반드시 한글로만 답변하세요. 영어 사용 금지.
+
+다음 형식으로 작성하세요:
+
+[추천 종목 분석]
+
+1. {종목명} ({티커})
+   - 투자 포인트: (핵심 강점 2-3가지)
+   - 재무 건전성: (우수/양호/보통)
+   - 주의사항: (있다면)
+
+2. ...
+
+[종합 의견]
+(전체적인 추천 이유와 투자시 고려사항)
+"""
 
         reasoning = await self.ai_engine.llama3.generate(
             prompt,
-            system_prompt="당신은 투자 애널리스트입니다."
+            system_prompt="""당신은 한국의 전문 투자 애널리스트입니다. 
+규칙: 
+1. 반드시 한글로만 답변
+2. 영어 단어 사용 금지
+3. 전문적이고 간결한 문체
+4. 투자 리스크 명시""",
+            temperature=0.5,
+            max_tokens=1500
         )
 
         return reasoning
@@ -295,9 +321,9 @@ class QueryAnalyzer:
         return None
 
     def _format_stock_result(
-            self,
-            stock: Stock,
-            fs: FinancialStatement
+        self,
+        stock: Stock,
+        fs: FinancialStatement
     ) -> Dict[str, Any]:
         """결과 포맷팅"""
         return {

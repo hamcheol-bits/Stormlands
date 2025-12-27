@@ -10,9 +10,9 @@ logger = logging.getLogger(__name__)
 
 class ModelType(Enum):
     """AI 모델 유형"""
-    GENERAL = "general"  # Llama3 - 범용 추론, 쿼리 파싱
-    FINANCIAL = "financial"  # FinGPT - 금융 특화 분석
-    SENTIMENT = "sentiment"  # FinBERT - 감성 분석
+    GENERAL = "general"          # Llama3 - 범용 추론, 쿼리 파싱
+    FINANCIAL = "financial"      # FinGPT - 금융 특화 분석
+    SENTIMENT = "sentiment"      # FinBERT - 감성 분석
 
 
 class FinancialAIEngine:
@@ -26,9 +26,9 @@ class FinancialAIEngine:
     """
 
     def __init__(self):
-        self.llama3 = None  # 범용 추론
-        self.fingpt = None  # 금융 특화
-        self.finbert = None  # 감성 분석
+        self.llama3 = None        # 범용 추론
+        self.fingpt = None        # 금융 특화
+        self.finbert = None       # 감성 분석
         self._initialized = False
 
     async def initialize(self):
@@ -99,40 +99,27 @@ class FinancialAIEngine:
             await self.initialize()
 
         # Llama3로 쿼리 파싱
-        system_prompt = """당신은 금융 데이터 분석 전문가입니다.
-사용자의 자연어 질문을 분석하여 다음 정보를 JSON 형식으로 추출하세요:
+        system_prompt = """You are a financial data analyst. Extract information from the user's Korean question and output ONLY valid JSON.
 
-1. market: 시장 구분 (KOSPI/KOSDAQ/ALL)
-2. sector: 섹터/업종 (반도체, 바이오, 금융 등)
-3. financial_conditions: 재무 조건
-   - valuation: 밸류에이션 (undervalued/fair/overvalued)
-   - profitability: 수익성 추세 (improving/stable/declining)
-   - growth: 성장성 (high/medium/low)
-   - safety: 안정성 (safe/moderate/risky)
-   - 구체적 수치 조건 (min_roe, max_debt_ratio 등)
-4. sort_by: 정렬 기준 배열
-   - field: roe, sales_growth, dividend_yield 등
-   - direction: asc 또는 desc
-5. count: 결과 개수
-6. analysis_type: 분석 유형 (value/growth/dividend/general)
+Required fields:
+- market: "KOSPI" | "KOSDAQ" | "ALL"
+- sector: string or null (e.g., "반도체", "바이오")
+- financial_conditions: object with optional fields:
+  - valuation: "undervalued" | "fair" | "overvalued"
+  - profitability: "improving" | "stable" | "declining"
+  - growth: "high" | "medium" | "low"
+  - min_roe: number
+  - max_debt_ratio: number
+- sort_by: array of {field: string, direction: "asc"|"desc"}
+- count: number (default: 5)
+- analysis_type: "value" | "growth" | "dividend" | "general"
 
-예시:
-질문: "저평가된 반도체 종목 3개 추천해줘"
-응답:
-{
-  "market": "ALL",
-  "sector": "반도체",
-  "financial_conditions": {
-    "valuation": "undervalued"
-  },
-  "sort_by": [
-    {"field": "pbr", "direction": "asc"}
-  ],
-  "count": 3,
-  "analysis_type": "value"
-}
+Example:
+Input: "저평가된 반도체 종목 3개"
+Output:
+{"market":"ALL","sector":"반도체","financial_conditions":{"valuation":"undervalued"},"sort_by":[{"field":"roe","direction":"desc"}],"count":3,"analysis_type":"value"}
 
-반드시 JSON만 출력하세요."""
+IMPORTANT: Output ONLY the JSON object, no explanation."""
 
         try:
             response = await self.llama3.chat([
@@ -164,12 +151,12 @@ class FinancialAIEngine:
             }
 
     async def analyze_stock(
-            self,
-            ticker: str,
-            name: str,
-            financial_data: Dict[str, Any],
-            price_data: Optional[Dict[str, Any]] = None,
-            news_summary: Optional[str] = None
+        self,
+        ticker: str,
+        name: str,
+        financial_data: Dict[str, Any],
+        price_data: Optional[Dict[str, Any]] = None,
+        news_summary: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         종목 상세 분석 (FinGPT 우선, 폴백: Llama3)
@@ -225,9 +212,9 @@ class FinancialAIEngine:
         }
 
     async def analyze_sentiment(
-            self,
-            texts: List[str],
-            aggregate: bool = True
+        self,
+        texts: List[str],
+        aggregate: bool = True
     ) -> Dict[str, Any]:
         """
         뉴스/리포트 감성 분석 (FinBERT 우선, 폴백: Llama3)
@@ -288,33 +275,90 @@ JSON 형식으로 응답:
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
         """LLM 응답에서 JSON 추출"""
         import json
+        import re
 
         try:
-            # 마크다운 코드블록 제거
             clean = response.strip()
 
+            # 1. 마크다운 코드블록 제거
             if "```json" in clean:
                 clean = clean.split("```json")[1].split("```")[0].strip()
             elif "```" in clean:
                 clean = clean.split("```")[1].split("```")[0].strip()
 
-            # JSON 파싱
-            return json.loads(clean)
+            # 2. JSON 객체만 추출 (정규식)
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', clean, re.DOTALL)
+            if json_match:
+                clean = json_match.group(0)
 
+            # 3. 줄바꿈 및 공백 정리
+            clean = re.sub(r'\s+', ' ', clean)
+
+            # 4. JSON 파싱
+            parsed = json.loads(clean)
+            logger.info(f"Successfully parsed JSON: {parsed}")
+            return parsed
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing failed: {e}")
+            logger.debug(f"Response was: {response[:500]}")
+
+            # 폴백: 기본값 반환
+            return self._extract_fallback_conditions(response)
         except Exception as e:
-            logger.error(f"Failed to parse JSON: {e}")
-            logger.debug(f"Response: {response}")
+            logger.error(f"Unexpected error in JSON parsing: {e}")
             return {}
 
+    def _extract_fallback_conditions(self, response: str) -> Dict[str, Any]:
+        """JSON 파싱 실패 시 키워드 기반 추출"""
+        result = {
+            "market": "ALL",
+            "count": 5,
+            "analysis_type": "general",
+            "financial_conditions": {}
+        }
+
+        response_lower = response.lower()
+
+        # 시장
+        if "kospi" in response_lower and "kosdaq" not in response_lower:
+            result["market"] = "KOSPI"
+        elif "kosdaq" in response_lower:
+            result["market"] = "KOSDAQ"
+
+        # 섹터
+        sectors = ["반도체", "바이오", "자동차", "금융", "화학", "IT", "통신"]
+        for sector in sectors:
+            if sector in response:
+                result["sector"] = sector
+                break
+
+        # 밸류에이션
+        if any(word in response for word in ["저평가", "undervalued", "싼", "낮은"]):
+            result["financial_conditions"]["valuation"] = "undervalued"
+
+        # 수익성
+        if any(word in response for word in ["상승", "증가", "개선", "improving"]):
+            result["financial_conditions"]["profitability"] = "improving"
+
+        # 개수
+        import re
+        count_match = re.search(r'(\d+)개', response)
+        if count_match:
+            result["count"] = int(count_match.group(1))
+
+        logger.info(f"Fallback extraction: {result}")
+        return result
+
     def _build_stock_analysis_prompt(
-            self,
-            ticker: str,
-            name: str,
-            financial_data: Dict[str, Any],
-            price_data: Optional[Dict[str, Any]],
-            news_summary: Optional[str]
+        self,
+        ticker: str,
+        name: str,
+        financial_data: Dict[str, Any],
+        price_data: Optional[Dict[str, Any]],
+        news_summary: Optional[str]
     ) -> str:
-        """종목 분석 프롬프트 생성"""
+        """종목 분석 프롬프트 생성 (한글)"""
 
         prompt = f"""종목 분석 요청:
 
@@ -340,12 +384,12 @@ JSON 형식으로 응답:
             prompt += f"\n최근 뉴스:\n{news_summary}\n"
 
         prompt += """
-다음 항목을 포함하여 분석하세요:
-1. 재무 건전성 평가
-2. 성장 가능성
-3. 밸류에이션 (저평가/적정/고평가)
+다음 항목을 포함하여 한글로 분석하세요:
+1. 재무 건전성 평가 (우량/보통/주의)
+2. 성장 가능성 (높음/중간/낮음)
+3. 밸류에이션 판단 (저평가/적정/고평가)
 4. 투자 의견 (매수/보유/매도)
-5. 리스크 요인
+5. 주요 리스크 요인
 6. 투자 포인트
 """
 

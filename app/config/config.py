@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # 2. FinGPT (금융 특화) - Hugging Face
     FINGPT_MODEL: str = "FinGPT/fingpt-forecaster_dow30_llama2-7b_lora"
-    FINGPT_ENABLED: bool = True  # 비활성화하면 Llama3만 사용
+    FINGPT_ENABLED: bool = False  # 비활성화하면 Llama3만 사용
 
     # 3. FinBERT (감성 분석) - Hugging Face
     FINBERT_MODEL: str = "ProsusAI/finbert"
