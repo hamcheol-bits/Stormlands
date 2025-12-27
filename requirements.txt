@@ -1,0 +1,45 @@
+# FastAPI & Web Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.3
+pydantic-settings>=2.1.0
+
+# Database
+sqlalchemy>=2.0.25
+pymysql>=1.1.0
+cryptography>=42.0.0
+
+# HTTP Client
+httpx>=0.26.0
+
+# LLM & RAG
+langchain>=0.1.0
+langchain-community>=0.0.13
+ollama>=0.1.0  # Llama3 로컬 실행
+# transformers>=4.36.0  # 대안: Hugging Face Transformers
+# torch>=2.1.0  # Llama3 직접 로드 시
+
+# Vector Database
+chromadb>=0.4.22
+sentence-transformers>=2.2.2  # 임베딩 모델
+
+# Data Processing
+pandas>=2.2.0
+numpy>=1.26.3
+
+# Utils
+python-dotenv>=1.0.0
+python-dateutil>=2.8.2
+
+# Logging
+python-json-logger>=2.0.7
+
+# Task Scheduling
+apscheduler>=3.10.4
+
+# Development & Testing
+pytest>=7.4.4
+pytest-asyncio>=0.23.3
+black>=24.1.0
+flake8>=7.0.0
+mypy>=1.8.0
