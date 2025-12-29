@@ -45,9 +45,6 @@ logs/
 chroma_data/
 *.db
 
-# Model Cache
-models/
-.cache/
 
 # Jupyter Notebook
 .ipynb_checkpoints
