@@ -20,7 +20,7 @@ class OpinionAnalyzer:
     기능:
     1. 증권사 투자의견 감성 분석 (FinBERT)
     2. 컨센서스 도출
-    3. 종목별 투자 추천 생성
+    3. 종목별 투자 추천 생성 (한글)
     """
 
     def __init__(self):
@@ -52,7 +52,7 @@ class OpinionAnalyzer:
                     "sell_count": 0,
                     "buy_ratio": 0.71
                 },
-                "analysis": "AI 종합 분석" (optional)
+                "analysis": "AI 종합 분석 (한글)"
             }
         """
         # 종목 정보 조회
@@ -97,11 +97,9 @@ class OpinionAnalyzer:
             for op in opinions
         ]
 
-        if self.ai_engine.finbert:
-            consensus = self.ai_engine.finbert.analyze_investment_opinions(opinion_dicts)
-        else:
-            # 폴백: 단순 집계
-            consensus = self._simple_consensus(opinion_dicts)
+        # 투자의견은 키워드 기반으로 직접 분류 (FinBERT 사용 안함)
+        # FinBERT는 투자의견 텍스트를 뉴스로 오인하여 잘못 분류함
+        consensus = self._calculate_consensus(opinion_dicts)
 
         result = {
             "ticker": ticker,
@@ -120,7 +118,7 @@ class OpinionAnalyzer:
             "consensus": consensus
         }
 
-        # AI 종합 분석 (선택)
+        # AI 종합 분석 (선택) - 한글로 생성
         if include_analysis and opinions:
             analysis = await self._generate_opinion_analysis(
                 ticker,
@@ -236,40 +234,78 @@ class OpinionAnalyzer:
             logger.error(f"Failed to find bullish stocks: {e}")
             return []
 
-    def _simple_consensus(self, opinions: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """단순 투자의견 집계 (FinBERT 없을 때)"""
-        buy_keywords = ["매수", "BUY", "강력매수", "적극매수"]
-        hold_keywords = ["보유", "HOLD", "중립", "Neutral"]
-        sell_keywords = ["매도", "SELL"]
+    def _calculate_consensus(self, opinions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        투자의견 컨센서스 계산 (키워드 기반)
+
+        FinBERT 감성 분석은 투자의견 텍스트를 잘못 분류하므로
+        키워드 기반으로 직접 분류
+        """
+        buy_keywords = ["매수", "BUY", "Buy", "강력매수", "적극매수", "STRONG BUY"]
+        hold_keywords = ["보유", "HOLD", "Hold", "중립", "NEUTRAL", "Neutral", "MARKET PERFORM"]
+        sell_keywords = ["매도", "SELL", "Sell", "비중축소", "REDUCE", "UNDERPERFORM"]
 
         buy_count = 0
         hold_count = 0
         sell_count = 0
 
         for op in opinions:
-            opinion = op.get('invt_opnn', '').upper()
+            opinion = op.get('invt_opnn', '').strip()
+            if not opinion:
+                continue
 
-            if any(kw.upper() in opinion for kw in buy_keywords):
+            # 매수 의견
+            if any(kw in opinion for kw in buy_keywords):
                 buy_count += 1
-            elif any(kw.upper() in opinion for kw in sell_keywords):
+            # 매도 의견
+            elif any(kw in opinion for kw in sell_keywords):
                 sell_count += 1
+            # 보유/중립 의견
+            elif any(kw in opinion for kw in hold_keywords):
+                hold_count += 1
             else:
+                # 알 수 없는 의견은 중립으로 처리
                 hold_count += 1
 
         total = len(opinions)
-        buy_ratio = buy_count / total if total > 0 else 0
+        if total == 0:
+            return {
+                "consensus": "neutral",
+                "sentiment_score": 0.5,
+                "sentiment_details": {
+                    "positive": 0.33,
+                    "neutral": 0.34,
+                    "negative": 0.33
+                },
+                "buy_count": 0,
+                "hold_count": 0,
+                "sell_count": 0,
+                "total_opinions": 0,
+                "buy_ratio": 0
+            }
+
+        buy_ratio = buy_count / total
+        sell_ratio = sell_count / total
 
         # 컨센서스 결정
         if buy_ratio >= 0.6:
-            sentiment = "positive"
-        elif sell_count / total >= 0.5:
-            sentiment = "negative"
+            consensus = "positive"
+            sentiment_score = buy_ratio
+        elif sell_ratio >= 0.5:
+            consensus = "negative"
+            sentiment_score = 1 - buy_ratio
         else:
-            sentiment = "neutral"
+            consensus = "neutral"
+            sentiment_score = 0.5
 
         return {
-            "sentiment": sentiment,
-            "sentiment_score": buy_ratio,
+            "consensus": consensus,
+            "sentiment_score": sentiment_score,
+            "sentiment_details": {
+                "positive": round(buy_ratio, 4),
+                "neutral": round(hold_count / total, 4),
+                "negative": round(sell_ratio, 4)
+            },
             "buy_count": buy_count,
             "hold_count": hold_count,
             "sell_count": sell_count,
@@ -284,9 +320,9 @@ class OpinionAnalyzer:
             opinions: List[Dict[str, Any]],
             consensus: Dict[str, Any]
     ) -> str:
-        """AI로 투자의견 종합 분석"""
+        """AI로 투자의견 종합 분석 (한글)"""
 
-        # 프롬프트 생성
+        # 프롬프트 생성 (한글)
         prompt = f"""종목: {name} ({ticker})
 
 증권사 투자의견 ({len(opinions)}개):
@@ -300,14 +336,41 @@ class OpinionAnalyzer:
         prompt += f"- 매도: {consensus.get('sell_count')}개\n"
         prompt += f"- 종합 감성: {consensus.get('sentiment')}\n"
 
-        prompt += "\n위 투자의견들을 종합하여 다음을 분석하세요:\n"
-        prompt += "1. 증권사들의 전반적인 시각\n"
-        prompt += "2. 투자 포인트와 리스크\n"
-        prompt += "3. 투자자 관점에서의 의견\n"
+        prompt += """
+
+⚠️ 중요: 반드시 한글로만 답변하세요. 영어 사용 금지.
+
+다음 형식으로 작성하세요:
+
+**1. 증권사들의 전반적인 시각**
+
+(증권사들이 이 종목을 어떻게 평가하는지 종합)
+
+**2. 투자 포인트와 리스크**
+
+투자 포인트:
+- (핵심 강점 2-3가지)
+
+주요 리스크:
+- (주의할 점 1-2가지)
+
+**3. 투자자 관점에서의 의견**
+
+(실제 투자 결정시 고려사항과 추천)
+"""
 
         analysis = await self.ai_engine.llama3.generate(
             prompt,
-            system_prompt="당신은 증권 애널리스트입니다. 여러 증권사의 투자의견을 종합 분석하세요."
+            system_prompt="""당신은 한국의 전문 증권 애널리스트입니다. 
+
+규칙:
+1. 반드시 한글로만 답변
+2. 영어 단어 사용 금지 (ticker 같은 용어도 '종목코드'로 표현)
+3. 전문적이고 객관적인 분석
+4. 투자 리스크 반드시 언급
+5. "Based on", "securities firms" 같은 영어 표현 절대 사용 금지""",
+            temperature=0.5,
+            max_tokens=1000
         )
 
         return analysis
