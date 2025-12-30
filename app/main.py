@@ -176,10 +176,11 @@ async def health_check():
 # ============================================================
 # 라우터 등록
 # ============================================================
-from app.routers import recommendations, opinions
+from app.routers import recommendations, opinions, valuation
 
 app.include_router(recommendations.router)
 app.include_router(opinions.router)
+app.include_router(valuation.router)
 
 logger.info("All routers registered successfully")
 
