@@ -1,39 +1,34 @@
 """
-밸류에이션 모델 베이스 클래스
+Valuation 기본 클래스 (완전판: TTM + 유틸리티 메서드)
 """
+from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 
 from app.models.stock import Stock
-from app.models.financial_statement import FinancialStatement
 from app.models.stock_price import StockPrice
+from app.models.financial_statement import FinancialStatement
 
 
 class BaseValuation(ABC):
-    """
-    밸류에이션 모델 추상 베이스 클래스
-
-    모든 밸류에이션 모델이 구현해야 하는 인터페이스
-    """
+    """밸류에이션 기본 클래스 (완전판)"""
 
     def __init__(self, db: Session, ticker: str):
-        """
-        Args:
-            db: 데이터베이스 세션
-            ticker: 종목코드
-        """
         self.db = db
         self.ticker = ticker
 
-        # 기본 데이터 로드
+        # 종목 정보
         self.stock = self._load_stock()
+
+        # 최신 재무제표
         self.latest_financial = self._load_latest_financial()
+
+        # 최신 주가
         self.current_price_data = self._load_current_price()
 
     def _load_stock(self) -> Optional[Stock]:
-        """종목 기본 정보 로드"""
+        """종목 정보 로드"""
         return self.db.query(Stock).filter(Stock.ticker == self.ticker).first()
 
     def _load_latest_financial(self) -> Optional[FinancialStatement]:
@@ -60,7 +55,7 @@ class BaseValuation(ABC):
         )
 
     def _load_financial_history(self, years: int = 5) -> list[FinancialStatement]:
-        """최근 N년 재무제표 로드"""
+        """최근 N년 연간 재무제표 로드"""
         return (
             self.db.query(FinancialStatement)
             .filter(
@@ -73,6 +68,126 @@ class BaseValuation(ABC):
             .limit(years)
             .all()
         )
+
+    # ========================================
+    # 🆕 TTM (Trailing Twelve Months) 지원
+    # ========================================
+
+    def _load_quarterly_history(self, quarters: int = 8) -> list[FinancialStatement]:
+        """
+        최근 N개 분기 재무제표 로드 (분기별 실적)
+
+        Args:
+            quarters: 조회할 분기 수
+
+        Returns:
+            분기별 재무제표 리스트 (최신순)
+
+        Note:
+            Riverlands 변경사항: 분기 데이터는 이제 누적이 아닌 분기별 실적
+        """
+        return (
+            self.db.query(FinancialStatement)
+            .filter(
+                and_(
+                    FinancialStatement.ticker == self.ticker,
+                    FinancialStatement.period_type == "Q"
+                )
+            )
+            .order_by(desc(FinancialStatement.stac_yymm))
+            .limit(quarters)
+            .all()
+        )
+
+    def _calculate_ttm(self, field_name: str, quarters: int = 4) -> Optional[int]:
+        """
+        TTM (Trailing Twelve Months) 계산
+        최근 N개 분기 합산
+
+        Args:
+            field_name: 합산할 필드명 ('thtr_ntin', 'sale_account', 'bsop_prti' 등)
+            quarters: 합산할 분기 수 (기본 4분기 = 12개월)
+
+        Returns:
+            TTM 값 또는 None
+
+        Example:
+            net_income_ttm = self._calculate_ttm('thtr_ntin')  # 최근 4분기 순이익 합산
+            sales_ttm = self._calculate_ttm('sale_account')    # 최근 4분기 매출 합산
+        """
+        quarterly_data = self._load_quarterly_history(quarters)
+
+        if len(quarterly_data) < quarters:
+            return None
+
+        total = 0
+        for q in quarterly_data:
+            value = getattr(q, field_name, None)
+            if value is None:
+                return None
+            total += value
+
+        return total
+
+    def get_net_income_ttm(self) -> Optional[int]:
+        """당기순이익 TTM (최근 4분기 합산)"""
+        return self._calculate_ttm('thtr_ntin')
+
+    def get_sales_ttm(self) -> Optional[int]:
+        """매출액 TTM (최근 4분기 합산)"""
+        return self._calculate_ttm('sale_account')
+
+    def get_operating_income_ttm(self) -> Optional[int]:
+        """영업이익 TTM (최근 4분기 합산)"""
+        return self._calculate_ttm('bsop_prti')
+
+    def get_eps_ttm(self) -> Optional[float]:
+        """
+        EPS TTM 계산 (최근 4분기 기준)
+
+        Returns:
+            EPS TTM 또는 None
+        """
+        net_income_ttm = self.get_net_income_ttm()
+        if not net_income_ttm:
+            return None
+
+        # 발행주식수 추정 (최신 재무제표 기준)
+        if not self.latest_financial:
+            return None
+
+        bps = self.latest_financial.bps
+        total_cptl = self.latest_financial.total_cptl
+
+        if not bps or not total_cptl or bps <= 0:
+            return None
+
+        # 발행주식수 = 자본총계 / BPS
+        shares_outstanding = total_cptl / bps
+
+        if shares_outstanding <= 0:
+            return None
+
+        return net_income_ttm / shares_outstanding
+
+    def get_per_ttm(self) -> Optional[float]:
+        """
+        PER TTM 계산 (주가 / EPS_TTM)
+
+        Returns:
+            PER TTM 또는 None
+        """
+        eps_ttm = self.get_eps_ttm()
+        current_price = self.current_price
+
+        if not eps_ttm or not current_price or eps_ttm <= 0:
+            return None
+
+        return current_price / eps_ttm
+
+    # ========================================
+    # 기존 속성들
+    # ========================================
 
     @property
     def current_price(self) -> Optional[float]:
@@ -90,7 +205,7 @@ class BaseValuation(ABC):
 
     @property
     def market(self) -> str:
-        """시장 (KOSPI/KOSDAQ)"""
+        """시장구분"""
         if self.stock:
             return self.stock.mrkt_ctg_cls_code
         return "Unknown"
@@ -119,6 +234,10 @@ class BaseValuation(ABC):
         """
         pass
 
+    # ========================================
+    # 유틸리티 메서드들
+    # ========================================
+
     def validate_data(self) -> bool:
         """필수 데이터 유효성 검사"""
         if not self.stock:
@@ -133,6 +252,7 @@ class BaseValuation(ABC):
         """에러 결과 반환"""
         return {
             "ticker": self.ticker,
+            "stock_name": self.stock_name,
             "error": message,
             "score": None,
             "rating": "N/A"
@@ -195,3 +315,74 @@ class BaseValuation(ABC):
             return "poor"
         else:
             return "very_poor"
+
+    # ========================================
+    # 안전한 속성 접근 헬퍼 메서드들
+    # ========================================
+
+    def get_financial_attr(self, attr_name: str, default=None):
+        """
+        재무제표 속성 안전하게 가져오기
+
+        Args:
+            attr_name: 속성명
+            default: 기본값 (None)
+
+        Returns:
+            속성 값 또는 기본값
+        """
+        if not self.latest_financial:
+            return default
+        return getattr(self.latest_financial, attr_name, default)
+
+    def get_bsop_prti(self) -> Optional[int]:
+        """영업이익 (연간)"""
+        return self.get_financial_attr('bsop_prti')
+
+    def get_total_aset(self) -> Optional[int]:
+        """자산총계"""
+        return self.get_financial_attr('total_aset')
+
+    def get_total_cptl(self) -> Optional[int]:
+        """자본총계"""
+        return self.get_financial_attr('total_cptl')
+
+    def get_total_lblt(self) -> Optional[int]:
+        """부채총계"""
+        return self.get_financial_attr('total_lblt')
+
+    def get_sale_account(self) -> Optional[int]:
+        """매출액 (연간)"""
+        return self.get_financial_attr('sale_account')
+
+    def get_thtr_ntin(self) -> Optional[int]:
+        """당기순이익 (연간)"""
+        return self.get_financial_attr('thtr_ntin')
+
+    def get_eps(self) -> Optional[float]:
+        """EPS (주당순이익, 연간)"""
+        eps = self.get_financial_attr('eps')
+        return float(eps) if eps else None
+
+    def get_bps(self) -> Optional[float]:
+        """BPS (주당순자산)"""
+        bps = self.get_financial_attr('bps')
+        return float(bps) if bps else None
+
+    def get_roe_val(self) -> Optional[float]:
+        """ROE (자기자본이익률)"""
+        roe = self.get_financial_attr('roe_val')
+        return float(roe) if roe else None
+
+    def get_sps(self) -> Optional[float]:
+        """SPS (주당매출액)"""
+        sps = self.get_financial_attr('sps')
+        return float(sps) if sps else None
+
+    def get_cras(self) -> Optional[int]:
+        """유동자산"""
+        return self.get_financial_attr('cras')
+
+    def get_flow_lblt(self) -> Optional[int]:
+        """유동부채"""
+        return self.get_financial_attr('flow_lblt')
